@@ -46,7 +46,7 @@ async def sla_breach_report(client: ZendeskClient, hours_ahead: int = 4) -> SLAB
             reply_time = reply_time_obj.get("calendar")
             if reply_time is None:
                 continue
-        except (ZendeskAPIError, Exception):
+        except (ZendeskAPIError, KeyError):
             continue
 
         priority_key = ticket.priority if ticket.priority is not None else "none"
@@ -160,7 +160,7 @@ async def response_time_analysis(client: ZendeskClient, days: int = 7) -> Respon
 
             if reply_min is None or resolution_min is None:
                 continue
-        except (ZendeskAPIError, Exception):
+        except (ZendeskAPIError, KeyError):
             continue
 
         first_h = round(reply_min / 60.0, 1)

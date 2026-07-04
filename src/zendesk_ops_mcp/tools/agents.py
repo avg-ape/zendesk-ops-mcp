@@ -81,15 +81,11 @@ async def group_distribution(client: ZendeskClient) -> GroupDistribution:
         group_id = raw_group["id"]
         name = raw_group.get("name") or ""
 
-        new_tickets = await client.search(f"type:ticket group:{group_id} status:new")
-        open_tickets = await client.search(f"type:ticket group:{group_id} status:open")
-        pending_tickets = await client.search(f"type:ticket group:{group_id} status:pending")
-        solved_tickets = await client.search(f"type:ticket group:{group_id} status:solved")
-
-        new_count = len(new_tickets)
-        open_count = len(open_tickets)
-        pending_count = len(pending_tickets)
-        solved_count = len(solved_tickets)
+        all_tickets = await client.search(f"type:ticket group:{group_id}")
+        new_count = sum(1 for t in all_tickets if t.get("status") == "new")
+        open_count = sum(1 for t in all_tickets if t.get("status") == "open")
+        pending_count = sum(1 for t in all_tickets if t.get("status") == "pending")
+        solved_count = sum(1 for t in all_tickets if t.get("status") == "solved")
         total = new_count + open_count + pending_count + solved_count
 
         total_tickets += total

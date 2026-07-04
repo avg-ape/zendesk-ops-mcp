@@ -125,7 +125,10 @@ class ZendeskClient:
     async def get(self, path: str, params: dict[str, Any] | None = None) -> dict:
         """Send a GET request and return the JSON response body."""
         self._require_configured()
-        response = await self._client.get(path, params=params)
+        try:
+            response = await self._client.get(path, params=params)
+        except httpx.ConnectError:
+            raise ZendeskAPIError(0, "Could not reach Zendesk API. Check your connection and subdomain.")
         self._update_rate_limit(response)
         self._check_response(response)
         return response.json()
@@ -133,7 +136,10 @@ class ZendeskClient:
     async def put(self, path: str, json: dict | None = None) -> dict:
         """Send a PUT request and return the JSON response body."""
         self._require_configured()
-        response = await self._client.put(path, json=json)
+        try:
+            response = await self._client.put(path, json=json)
+        except httpx.ConnectError:
+            raise ZendeskAPIError(0, "Could not reach Zendesk API. Check your connection and subdomain.")
         self._update_rate_limit(response)
         self._check_response(response)
         return response.json()
@@ -157,11 +163,13 @@ class ZendeskClient:
         current_params = params
 
         while next_url:
-            if next_url == path:
-                response = await self._client.get(next_url, params=current_params)
-            else:
-                # next_page is a full URL; use httpx directly to avoid double base_url
-                response = await self._client.get(next_url)
+            try:
+                if next_url == path:
+                    response = await self._client.get(next_url, params=current_params)
+                else:
+                    response = await self._client.get(next_url)
+            except httpx.ConnectError:
+                raise ZendeskAPIError(0, "Could not reach Zendesk API. Check your connection and subdomain.")
 
             self._update_rate_limit(response)
             self._check_response(response)
@@ -182,11 +190,14 @@ class ZendeskClient:
         params: dict[str, Any] | None = {"query": query, "per_page": 100}
 
         while next_url:
-            if params is not None:
-                response = await self._client.get(next_url, params=params)
-                params = None  # only pass params on the first request
-            else:
-                response = await self._client.get(next_url)
+            try:
+                if params is not None:
+                    response = await self._client.get(next_url, params=params)
+                    params = None
+                else:
+                    response = await self._client.get(next_url)
+            except httpx.ConnectError:
+                raise ZendeskAPIError(0, "Could not reach Zendesk API. Check your connection and subdomain.")
 
             self._update_rate_limit(response)
             self._check_response(response)

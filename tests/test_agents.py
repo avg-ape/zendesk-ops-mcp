@@ -98,17 +98,16 @@ async def test_group_distribution():
         return_value=httpx.Response(200, json=groups_payload, headers=RATE_LIMIT_HEADERS)
     )
 
-    # Return 2, 3, 1, 5 results for new, open, pending, solved respectively
-    status_counts = {"new": 2, "open": 3, "pending": 1, "solved": 5}
+    # Single search returns all tickets for the group with mixed statuses
+    all_group_tickets = (
+        [{"id": i, "status": "new"} for i in range(2)]
+        + [{"id": i + 10, "status": "open"} for i in range(3)]
+        + [{"id": i + 20, "status": "pending"} for i in range(1)]
+        + [{"id": i + 30, "status": "solved"} for i in range(5)]
+    )
 
     def search_side_effect(request: httpx.Request) -> httpx.Response:
-        query = dict(request.url.params).get("query", "")
-        results = []
-        for status, count in status_counts.items():
-            if f"status:{status}" in query:
-                results = [{"id": i, "status": status} for i in range(count)]
-                break
-        return _make_search_response(results)
+        return _make_search_response(all_group_tickets)
 
     respx.get(SEARCH_URL).mock(side_effect=search_side_effect)
 
