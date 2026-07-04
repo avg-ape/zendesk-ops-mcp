@@ -176,3 +176,82 @@ async def test_bulk_tag_dry_run():
     assert len(put_calls) == 0
 
     await client.close()
+
+
+# ---------------------------------------------------------------------------
+# test_bulk_close_dry_run
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+@respx.mock
+async def test_bulk_close_dry_run():
+    client = make_client()
+
+    ticket1 = _make_ticket(30, subject="Old solved ticket A", status="solved")
+    ticket2 = _make_ticket(31, subject="Old solved ticket B", status="solved")
+
+    respx.get(SEARCH_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={"results": [ticket1, ticket2], "next_page": None, "count": 2},
+            headers=RATE_LIMIT_HEADERS,
+        )
+    )
+
+    result = await bulk_close_tickets(
+        client,
+        status_filter="solved",
+        older_than_days=30,
+        dry_run=True,
+    )
+
+    assert result.count == 2
+    assert result.dry_run is True
+
+    # Verify no PUT was made
+    put_calls = [call for call in respx.calls if call.request.method == "PUT"]
+    assert len(put_calls) == 0
+
+    await client.close()
+
+
+# ---------------------------------------------------------------------------
+# test_bulk_tag_applies_tags
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+@respx.mock
+async def test_bulk_tag_applies_tags():
+    client = make_client()
+
+    ticket = _make_ticket(100, subject="Needs escalation")
+
+    respx.get(SEARCH_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={"results": [ticket], "next_page": None, "count": 1},
+            headers=RATE_LIMIT_HEADERS,
+        )
+    )
+
+    update_many_url = f"{BASE_URL}/api/v2/tickets/update_many.json"
+    respx.put(url__regex=r".*/api/v2/tickets/update_many\.json.*").mock(
+        return_value=httpx.Response(
+            200,
+            json={"job_status": {"id": "abc"}},
+            headers=RATE_LIMIT_HEADERS,
+        )
+    )
+
+    result = await bulk_tag_tickets(
+        client,
+        query="type:ticket tag:needs-escalation",
+        tags=["escalated"],
+        dry_run=False,
+    )
+
+    assert result.count == 1
+    assert result.dry_run is False
+
+    # Verify the PUT was actually called
+    assert respx.calls.call_count >= 2
+
+    await client.close()

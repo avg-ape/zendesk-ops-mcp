@@ -145,3 +145,50 @@ async def test_response_time_analysis():
     assert result.by_priority["high"]["avg_resolution_hours"] == 3.0
 
     await client.close()
+
+
+# ---------------------------------------------------------------------------
+# test_sla_breach_report
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+@respx.mock
+async def test_sla_breach_report():
+    client = make_client()
+
+    ticket_100 = _make_ticket(100, priority="urgent", group_id=10, status="open")
+    ticket_101 = _make_ticket(101, priority="high", group_id=20, status="new")
+
+    respx.get(SEARCH_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={"results": [ticket_100, ticket_101], "next_page": None, "count": 2},
+            headers=RATE_LIMIT_HEADERS,
+        )
+    )
+
+    # reply_time 600 min → breached (>480); reply_time 300 min → approaching (>240 with hours_ahead=4)
+    metrics_by_id = {
+        "100": {"ticket_metric": {"reply_time_in_minutes": {"calendar": 600}}},
+        "101": {"ticket_metric": {"reply_time_in_minutes": {"calendar": 300}}},
+    }
+
+    def metrics_side_effect(request: httpx.Request) -> httpx.Response:
+        # path is like /api/v2/tickets/100/metrics.json
+        ticket_id = request.url.path.split("/")[4]
+        payload = metrics_by_id[ticket_id]
+        return httpx.Response(200, json=payload, headers=RATE_LIMIT_HEADERS)
+
+    respx.get(url__regex=r".*/api/v2/tickets/\d+/metrics\.json").mock(
+        side_effect=metrics_side_effect
+    )
+
+    result = await sla_breach_report(client, hours_ahead=4)
+
+    assert len(result.breached) == 1
+    assert len(result.approaching) == 1
+    assert result.breached[0].id == 100
+    assert result.approaching[0].id == 101
+    assert "urgent" in result.by_priority
+    assert "high" in result.by_priority
+
+    await client.close()
